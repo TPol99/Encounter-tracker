@@ -630,6 +630,18 @@ body:before{background:radial-gradient(circle,var(--page-ambient-a),transparent 
 .health-results-toggle{width:100%;margin-top:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);color:#fff;border-radius:14px;padding:11px 13px;font-weight:850}
 .choice .choice-indicator{opacity:1!important;visibility:visible!important}
 
+
+/* v8.2C.4: visible Open action + delete-only swipe + reliable sheet pull-down */
+.history-card.v82c-swipe .history-card-inner [data-open],
+.history-card.v82c-swipe .history-card-inner [data-open-dash]{display:inline-flex!important;align-items:center;justify-content:center!important;flex:0 0 auto}
+.history-card.v82c-swipe .history-card-inner [data-del]{display:none!important}
+.history-card.v82c-swipe .history-swipe-actions{width:92px!important}
+.history-card.v82c-swipe .history-swipe-edit{display:none!important}
+.history-card.v82c-swipe .history-swipe-delete{min-width:92px!important;width:92px!important}
+.detail-sheet{overscroll-behavior:contain}
+.detail-grabber{touch-action:none;cursor:grab}
+.detail-sheet.v82c-sheet-dragging{overflow:hidden!important;user-select:none;-webkit-user-select:none}
+
 </style>
 </head>
 <body><div class="v82-mobile-header" id="v82MobileHeader" aria-hidden="true"><span class="v82-mobile-header-title" id="v82MobileHeaderTitle">Report Card</span></div><div class="v82-nav-scrim" aria-hidden="true"></div>
@@ -1349,11 +1361,44 @@ requestAnimationFrame(()=>{syncAllChoiceLenses(false);syncRatingStates();applyPr
   const oldOpen=openEncounterDetail;openEncounterDetail=function(id){paint(0);oldOpen(id)};
   const oldClose=closeEncounterDetail;closeEncounterDetail=function(){oldClose();paint(0)};
  }
- function enhanceCards(root=document){root.querySelectorAll('.history-card').forEach(card=>{if(card.dataset.v82c)return;card.dataset.v82c='1';card.classList.add('v82c-swipe');const open=card.querySelector('[data-open],[data-open-dash]'),del=card.querySelector('[data-del]');if(!open&&!del)return;const id=open?.dataset.open||open?.dataset.openDash||del?.dataset.del;const children=[...card.childNodes];const inner=document.createElement('div');inner.className='history-card-inner';children.forEach(n=>inner.appendChild(n));card.appendChild(inner);const actions=document.createElement('div');actions.className='history-swipe-actions';actions.innerHTML=`<button class="history-swipe-edit" type="button">Open</button><button class="history-swipe-delete" type="button">Delete</button>`;card.appendChild(actions);let drag=false,sx=0,x=0;const set=v=>{x=Math.max(-150,Math.min(0,v));inner.style.setProperty('--swipe-x',x+'px');actions.style.pointerEvents=x<-8?'auto':'none';actions.style.opacity=x<-8?'1':'0'};set(0);inner.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;drag=true;sx=e.clientX-x;card.classList.add('swiping');inner.setPointerCapture?.(e.pointerId)});inner.addEventListener('pointermove',e=>{if(!drag)return;const next=e.clientX-sx;if(next<=8){set(next);if(Math.abs(next)>8)e.preventDefault()}},{passive:false});const finish=()=>{if(!drag)return;drag=false;card.classList.remove('swiping');set(x<-65?-150:0)};inner.addEventListener('pointerup',finish);inner.addEventListener('pointercancel',finish);actions.querySelector('.history-swipe-edit').onclick=()=>openEncounterDetail(Number(id));actions.querySelector('.history-swipe-delete').onclick=()=>{persistHistory(loadHistory().filter(v=>v.id!=id));toast('Encounter deleted')};});}
+ function enhanceCards(root=document){root.querySelectorAll('.history-card').forEach(card=>{if(card.dataset.v82c)return;card.dataset.v82c='1';card.classList.add('v82c-swipe');const open=card.querySelector('[data-open],[data-open-dash]'),del=card.querySelector('[data-del]');if(!open&&!del)return;const id=open?.dataset.open||open?.dataset.openDash||del?.dataset.del;const children=[...card.childNodes];const inner=document.createElement('div');inner.className='history-card-inner';children.forEach(n=>inner.appendChild(n));card.appendChild(inner);const actions=document.createElement('div');actions.className='history-swipe-actions';actions.innerHTML=`<button class="history-swipe-delete" type="button">Delete</button>`;card.appendChild(actions);let drag=false,sx=0,x=0;const maxSwipe=92;const set=v=>{x=Math.max(-maxSwipe,Math.min(0,v));inner.style.setProperty('--swipe-x',x+'px');actions.style.pointerEvents=x<-8?'auto':'none';actions.style.opacity=x<-8?'1':'0'};set(0);inner.addEventListener('pointerdown',e=>{if(e.target.closest('button'))return;drag=true;sx=e.clientX-x;card.classList.add('swiping');inner.setPointerCapture?.(e.pointerId)});inner.addEventListener('pointermove',e=>{if(!drag)return;const next=e.clientX-sx;if(next<=8){set(next);if(Math.abs(next)>8)e.preventDefault()}},{passive:false});const finish=()=>{if(!drag)return;drag=false;card.classList.remove('swiping');set(x<-42?-maxSwipe:0)};inner.addEventListener('pointerup',finish);inner.addEventListener('pointercancel',finish);actions.querySelector('.history-swipe-delete').onclick=()=>{persistHistory(loadHistory().filter(v=>v.id!=id));toast('Encounter deleted')};});}
  const oldHistory=renderHistory;renderHistory=function(){oldHistory();requestAnimationFrame(()=>enhanceCards($('historyList')))};
  const oldDash=renderDashboard;renderDashboard=function(){oldDash();requestAnimationFrame(()=>enhanceCards($('recentList')))};
  const oldShow=showView;showView=function(id){const target=$(id);if(target&&!v8Reduced()){const cards=[...target.querySelectorAll('.analytics-card,.review-card,.dashboard-card')].slice(0,3);cards.forEach(c=>c.classList.add('v82c-skeleton'));setTimeout(()=>cards.forEach(c=>c.classList.remove('v82c-skeleton')),180)}oldShow(id);requestAnimationFrame(()=>enhanceCards(target||document))};
  requestAnimationFrame(()=>enhanceCards());
+})();
+
+
+// v8.2C.4 — allow pull-down dismissal from the sheet surface, not only the tiny grabber.
+(function installReliableDetailSheetDrag(){
+ const overlay=$('encounterDetail'),sheet=overlay?.querySelector('.detail-sheet');
+ if(!overlay||!sheet||sheet.dataset.pullDownV824)return;
+ sheet.dataset.pullDownV824='1';
+ let active=false,pid=null,startY=0,startScroll=0,y=0,moved=false;
+ const interactive='button,input,textarea,select,a,[role="button"]';
+ const paint=v=>{y=Math.max(0,v);sheet.style.setProperty('--sheet-y',y+'px');const p=Math.min(.78,y/420);overlay.style.background=`rgba(5,3,8,${(.48*(1-p)).toFixed(3)})`;const blur=Math.max(2,16*(1-p));overlay.style.backdropFilter=`blur(${blur.toFixed(1)}px)`;overlay.style.webkitBackdropFilter=`blur(${blur.toFixed(1)}px)`};
+ const reset=()=>{paint(0);sheet.classList.remove('v82c-sheet-dragging');sheet.style.transition='';active=false;pid=null;moved=false};
+ sheet.addEventListener('pointerdown',e=>{
+   if(e.pointerType==='mouse'&&e.button!==0)return;
+   if(e.target.closest(interactive)&&!e.target.closest('.detail-grabber'))return;
+   if(sheet.scrollTop>1&&!e.target.closest('.detail-grabber'))return;
+   active=true;pid=e.pointerId;startY=e.clientY;startScroll=sheet.scrollTop;y=0;moved=false;sheet.style.transition='none';sheet.setPointerCapture?.(pid);
+ });
+ sheet.addEventListener('pointermove',e=>{
+   if(!active||e.pointerId!==pid)return;
+   const dy=e.clientY-startY;
+   if(dy<0){if(!moved)return;paint(0);return}
+   if(dy>5)moved=true;
+   if(!moved)return;
+   paint(dy*.96);e.preventDefault();
+ },{passive:false});
+ const finish=e=>{
+   if(!active||(e&&e.pointerId!==pid))return;
+   const h=sheet.getBoundingClientRect().height,shouldClose=y>Math.min(150,h*.22);
+   sheet.classList.remove('v82c-sheet-dragging');sheet.style.transition='transform .32s cubic-bezier(.22,1,.36,1)';
+   if(shouldClose){paint(h+90);setTimeout(()=>{closeEncounterDetail();reset()},210)}else{paint(0);setTimeout(reset,330)}
+ };
+ sheet.addEventListener('pointerup',finish);sheet.addEventListener('pointercancel',finish);
 })();
 
 applyPrefs();renderWrapped(new Date().getFullYear());
