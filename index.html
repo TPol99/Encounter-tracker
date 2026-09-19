@@ -153,20 +153,24 @@ function renderHistory(){
 }
 $("prevMonth").onclick=()=>changeMonth(-1);$("nextMonth").onclick=()=>changeMonth(1);$("calGrid").onclick=e=>{if(e.target.dataset.day){selectedHistoryDate=e.target.dataset.day;renderHistory()}};$("calendar").addEventListener("touchstart",e=>{touchStartX=e.changedTouches[0].clientX},{passive:true});$("calendar").addEventListener("touchend",e=>{const dx=e.changedTouches[0].clientX-touchStartX;if(Math.abs(dx)>55)changeMonth(dx<0?1:-1)},{passive:true});
 $("historyList").onclick=e=>{const h=loadHistory();if(e.target.dataset.del){persistHistory(h.filter(x=>x.id!=e.target.dataset.del));toast("Encounter deleted");return}if(e.target.dataset.open){const x=h.find(x=>x.id==e.target.dataset.open);if(!x)return;position=x.position||"Topping";items=x.items||makeItems(position);repeat=x.repeat||"Absolutely";starRating=x.stars||0;encounterType=x.encounterType||"1-on-1";people=x.people||[{name:x.name||"",social:x.social||""}];buildPeople();$("encounterDate").value=x.date;$("notes").value=x.notes||"";[...$("positionChoice").children].forEach(b=>b.classList.toggle("on",b.dataset.v===position));[...$("encounterChoice").children].forEach(b=>b.classList.toggle("on",b.dataset.v===encounterType));[...$("repeatChoice").children].forEach(b=>b.classList.toggle("on",b.dataset.v===repeat));buildRatings();updateStars();render();$("report").classList.remove("hidden");showView("encounterView");toast("Encounter loaded")}};
-$("saveEncounter").onclick=()=>{const h=loadHistory();h.push(snapshot());persistHistory(h);toast("Saved locally")};$("homeExportBackup").onclick=async()=>{const btn=$("homeExportBackup");btn.disabled=true;btn.textContent="Preparing…";try{await downloadJSON({encounters:loadHistory(),reviews:loadReviewArchive(),version:3,exportedAt:new Date().toISOString()},"report-card-backup.json")}catch(e){console.error(e);toast("Export failed — try Share Backup")}finally{btn.disabled=false;btn.textContent="Export Backup"}};$("homeImportBackup").onclick=()=>$('importFile').click();$("importFile").onchange=async e=>{try{const v=JSON.parse(await e.target.files[0].text());if(Array.isArray(v)){persistHistory(v);toast("Legacy encounter backup imported")}else if(Array.isArray(v.encounters)){persistHistory(v.encounters);if(Array.isArray(v.reviews))saveReviewArchive(v.reviews);renderReviewArchive();toast("Backup imported")}else throw 0}catch{toast("Invalid backup file")}e.target.value=""};
+$("saveEncounter").onclick=()=>{const h=loadHistory();h.push(snapshot());persistHistory(h);toast("Saved locally")};$("homeExportBackup").onclick=async()=>{const btn=$("homeExportBackup");btn.disabled=true;btn.textContent="Preparing…";try{await downloadJSON({encounters:loadHistory(),reviews:loadReviewArchive(),version:3,exportedAt:new Date().toISOString()},"report-card-backup.json")}catch(e){console.error(e);toast("Couldn’t open the share sheet — try Safari")}finally{btn.disabled=false;btn.textContent="Export Backup"}};$("homeImportBackup").onclick=()=>$('importFile').click();$("importFile").onchange=async e=>{try{const v=JSON.parse(await e.target.files[0].text());if(Array.isArray(v)){persistHistory(v);toast("Legacy encounter backup imported")}else if(Array.isArray(v.encounters)){persistHistory(v.encounters);if(Array.isArray(v.reviews))saveReviewArchive(v.reviews);renderReviewArchive();toast("Backup imported")}else throw 0}catch{toast("Invalid backup file")}e.target.value=""};
 async function downloadJSON(v,name){
- const json=JSON.stringify(v,null,2),blob=new Blob([json],{type:"application/json"}),file=new File([blob],name,{type:"application/json"});
- let completed=false;
- if(navigator.share){
-  try{
-   const payload=(navigator.canShare?.({files:[file]})!==false)?{files:[file],title:"Report Card Backup"}:{title:"Report Card Backup",text:json};
-   await navigator.share(payload);completed=true;
-  }catch(e){if(e?.name==="AbortError")return;console.warn("Share failed, using download fallback",e)}
+ const json=JSON.stringify(v,null,2);
+ const file=new File([json],name,{type:"application/json"});
+ // iPhone/iPad: use the native share sheet with the JSON as an actual file.
+ // Do not fall back to an anchor download: iOS browsers can silently block it.
+ if(!navigator.share) throw new Error("Native sharing is not available in this browser.");
+ if(typeof navigator.canShare==="function" && !navigator.canShare({files:[file]})) throw new Error("This browser cannot share backup files.");
+ try{
+  await navigator.share({files:[file],title:"Report Card Backup"});
+ }catch(e){
+  if(e?.name==="AbortError") return false;
+  throw e;
  }
- if(!completed){
-  const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.rel="noopener";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);completed=true;
- }
- if(completed){localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());renderBackupStatus();toast("Backup exported")}
+ localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());
+ renderBackupStatus();
+ toast("Backup ready — save it to Files");
+ return true;
 }
 function renderBackupStatus(){const el=$("backupStatus");if(!el)return;const raw=localStorage.getItem(LAST_BACKUP_KEY);if(!raw){el.textContent="No backup recorded on this device yet.";return}const d=new Date(raw),days=Math.floor((Date.now()-d.getTime())/86400000);const when=new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric",hour:"numeric",minute:"2-digit"}).format(d);el.textContent=days>=14?`⚠️ Last backup: ${when} · ${days} days ago — backup recommended`:`✓ Last backup: ${when}${days?` · ${days} day${days===1?"":"s"} ago`:" · today"}`;}
 function meta(avg){if(avg>=9)return["A+","Exceptional"];if(avg>=8)return["A","Outstanding"];if(avg>=7)return["B","Very Good"];if(avg>=6)return["B-","Good"];if(avg>=5)return["C","Satisfactory"];if(avg>=4)return["D","Needs Improvement"];return["F","Remedial Action Required"]}
