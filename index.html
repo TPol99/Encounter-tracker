@@ -103,7 +103,7 @@ button,input,textarea,select{font:inherit}button{touch-action:manipulation}.wrap
 </main>
 <div class="bottomnav" id="bottomnav"><button data-view="homeView" class="on">⌂ Home</button><button data-view="encounterView">＋ Encounter</button><button data-view="reviewsView">✦ Reviews</button></div><div class="toast" id="toast"></div>
 
-<div class="backup-modal" id="backupModal" role="dialog" aria-modal="true" aria-labelledby="backupModalTitle"><div class="backup-sheet"><h3 id="backupModalTitle">💾 Backup Centre</h3><p id="backupModalHelp">Copy this backup text and save it somewhere safe. You can paste it back here later to restore everything.</p><pre class="backup-display" id="backupDisplay"></pre><textarea class="backup-text" id="backupText" spellcheck="false" autocapitalize="off" autocomplete="off" style="display:none"></textarea><div class="backup-modal-actions"><button class="primary" id="copyBackupText" type="button">Copy Backup</button><button id="shareBackupText" type="button">Share</button><button id="restoreBackupText" type="button">Restore Pasted Backup</button><button id="closeBackupModal" type="button">Close</button></div></div></div>
+<div class="backup-modal" id="backupModal" role="dialog" aria-modal="true" aria-labelledby="backupModalTitle"><div class="backup-sheet"><h3 id="backupModalTitle">💾 Backup Centre</h3><p id="backupModalHelp">Copy this backup text and save it somewhere safe. You can paste it back here later to restore everything.</p><pre class="backup-display" id="backupDisplay"></pre><textarea class="backup-text" id="backupText" spellcheck="false" autocapitalize="off" autocomplete="off" style="display:none"></textarea><div class="backup-modal-actions"><button class="primary" id="copyBackupText" type="button">Copy Backup</button><button id="downloadBackupFile" type="button">Download .json File</button><button id="shareBackupText" type="button">Share</button><button id="importBackupFile" type="button">Import .json File</button><button id="restoreBackupText" type="button">Restore Pasted Backup</button><button id="closeBackupModal" type="button">Close</button></div></div></div>
 <script>
 const categories={
  Topping:["Ass game","Tightness","Rimming","Sucking","Kissing","Verbal engagement","Enthusiasm","Stamina","Position variety","Aftercare","Overall vibe"],
@@ -179,7 +179,7 @@ function openBackupModal(mode="export"){
   box.style.display="none";
   const encounterCount=payload.encounters.length, reviewCount=payload.reviews.length;
   help.textContent=`Complete backup ready: ${encounterCount} encounter${encounterCount===1?"":"s"}, ${reviewCount} saved review${reviewCount===1?"":"s"}, plus all app settings. Copy this text and save it somewhere safe.`;
-  $("copyBackupText").style.display="";$("shareBackupText").style.display="";$("restoreBackupText").style.display="none";
+  $("copyBackupText").style.display="";$("downloadBackupFile").style.display="";$("shareBackupText").style.display="";$("importBackupFile").style.display="none";$("restoreBackupText").style.display="none";
   modal.classList.add("open");
   // Force a repaint after the bottom sheet is visible on iOS.
   requestAnimationFrame(()=>{display.textContent=currentBackupText;display.scrollTop=0});
@@ -187,20 +187,42 @@ function openBackupModal(mode="export"){
   modal.classList.add("open");
   currentBackupText="";display.textContent="";display.style.display="none";box.style.display="block";box.value="";box.readOnly=false;box.placeholder="Paste your Report Card backup JSON here…";
   help.textContent="Paste backup text below, then tap Restore Pasted Backup. You can still import a .json file instead.";
-  $("copyBackupText").style.display="none";$("shareBackupText").style.display="none";$("restoreBackupText").style.display="";setTimeout(()=>box.focus(),80);
+  $("copyBackupText").style.display="none";$("downloadBackupFile").style.display="none";$("shareBackupText").style.display="none";$("importBackupFile").style.display="";$("restoreBackupText").style.display="";setTimeout(()=>box.focus(),80);
  }
 }
 function closeBackupModal(){$("backupModal").classList.remove("open")}
-function applyBackup(v){if(Array.isArray(v)){persistHistory(v);return "Legacy encounter backup imported"}if(v&&Array.isArray(v.encounters)){persistHistory(v.encounters);if(Array.isArray(v.reviews))saveReviewArchive(v.reviews);if(v.preferences&&typeof v.preferences==="object")localStorage.setItem(PREF_KEY,JSON.stringify(v.preferences));if(v.lastBackupAt)localStorage.setItem(LAST_BACKUP_KEY,v.lastBackupAt);applyPrefs();renderReviewArchive();renderBackupStatus();return "Everything restored"}throw new Error("Invalid backup")}
+function validateBackup(v){
+ if(Array.isArray(v))return {legacy:true,encounters:v,reviews:[],preferences:null,lastBackupAt:null};
+ if(!v||typeof v!=="object"||!Array.isArray(v.encounters))throw new Error("Invalid backup structure");
+ return {legacy:false,encounters:v.encounters,reviews:Array.isArray(v.reviews)?v.reviews:[],preferences:v.preferences&&typeof v.preferences==="object"?v.preferences:null,lastBackupAt:v.lastBackupAt||null};
+}
+function applyBackup(v){
+ const b=validateBackup(v); // validate everything before touching storage
+ const old={encounters:localStorage.getItem(STORE_KEY),reviews:localStorage.getItem(REVIEW_KEY),prefs:localStorage.getItem(PREF_KEY),last:localStorage.getItem(LAST_BACKUP_KEY)};
+ try{
+  localStorage.setItem(STORE_KEY,JSON.stringify(b.encounters));
+  localStorage.setItem(REVIEW_KEY,JSON.stringify(b.reviews));
+  if(b.preferences)localStorage.setItem(PREF_KEY,JSON.stringify(b.preferences));
+  if(b.lastBackupAt)localStorage.setItem(LAST_BACKUP_KEY,b.lastBackupAt);
+ }catch(err){
+  const restore=(k,val)=>val===null?localStorage.removeItem(k):localStorage.setItem(k,val);
+  restore(STORE_KEY,old.encounters);restore(REVIEW_KEY,old.reviews);restore(PREF_KEY,old.prefs);restore(LAST_BACKUP_KEY,old.last);throw err;
+ }
+ return {message:b.legacy?`Legacy backup restored — ${b.encounters.length} encounter${b.encounters.length===1?"":"s"}`:`Complete backup restored — ${b.encounters.length} encounter${b.encounters.length===1?"":"s"}, ${b.reviews.length} review${b.reviews.length===1?"":"s"} and settings`,backup:b};
+}
+function refreshAfterRestore(){try{applyPrefs();renderHistory();renderReviewControls();renderReviewArchive();renderDashboard();autoGenerateCurrentReviews();render()}catch(err){console.error("Restore UI refresh error",err);toast("Backup restored — refresh the page to update the display")}}
 $("homeExportBackup").onclick=()=>openBackupModal("export");
 $("homeImportBackup").onclick=()=>openBackupModal("import");
 $("closeBackupModal").onclick=closeBackupModal;
 $("backupModal").onclick=e=>{if(e.target===$("backupModal"))closeBackupModal()};
 $("copyBackupText").onclick=async()=>{const text=currentBackupText||$("backupDisplay").textContent;if(!text){toast("Backup is empty — nothing copied");return}try{await navigator.clipboard.writeText(text)}catch{const ta=document.createElement("textarea");ta.value=text;ta.setAttribute("readonly","");ta.style.cssText="position:fixed;left:-9999px;top:0;opacity:0";document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);const ok=document.execCommand("copy");ta.remove();if(!ok){toast("Press and hold the backup text, then choose Copy");return}}localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());renderBackupStatus();toast("Backup copied — save it somewhere safe")};
+$("downloadBackupFile").onclick=()=>{const text=currentBackupText||$("backupDisplay").textContent;if(!text){toast("Backup is empty");return}try{const blob=new Blob([text],{type:"application/json;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`report-card-backup-${localISODate()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());renderBackupStatus();toast("Download requested — check Safari Downloads")}catch{toast("File download unavailable — use Copy Backup")}};
 $("shareBackupText").onclick=async()=>{const text=currentBackupText||$("backupDisplay").textContent;if(!navigator.share){toast("Sharing unavailable — use Copy Backup");return}try{await navigator.share({title:"Report Card Backup",text});localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());renderBackupStatus()}catch(e){if(e?.name!=="AbortError")toast("Sharing unavailable — use Copy Backup")}};
-$("restoreBackupText").onclick=()=>{try{const v=JSON.parse($("backupText").value.trim());toast(applyBackup(v));closeBackupModal();renderHome();renderReviews()}catch{toast("That backup text isn't valid")}};
-$("importFile").onchange=async e=>{try{const v=JSON.parse(await e.target.files[0].text());toast(applyBackup(v))}catch{toast("Invalid backup file")}e.target.value=""};
+$("importBackupFile").onclick=()=>$("importFile").click();
+$("restoreBackupText").onclick=()=>{let parsed;try{parsed=JSON.parse($("backupText").value.trim());validateBackup(parsed)}catch{toast("That backup text isn't valid");return}try{const result=applyBackup(parsed);closeBackupModal();refreshAfterRestore();toast(result.message)}catch{toast("Restore failed — your existing data was left unchanged")}};
+$("importFile").onchange=async e=>{const file=e.target.files?.[0];if(!file)return;let parsed;try{parsed=JSON.parse(await file.text());validateBackup(parsed)}catch{toast("That backup file isn't valid");e.target.value="";return}try{const result=applyBackup(parsed);closeBackupModal();refreshAfterRestore();toast(result.message)}catch{toast("Restore failed — your existing data was left unchanged")}e.target.value=""};
 async function downloadJSON(v,name){openBackupModal("export");return true}
+
 function renderBackupStatus(){const el=$("backupStatus");if(!el)return;const raw=localStorage.getItem(LAST_BACKUP_KEY);if(!raw){el.textContent="No backup recorded on this device yet.";return}const d=new Date(raw),days=Math.floor((Date.now()-d.getTime())/86400000);const when=new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric",hour:"numeric",minute:"2-digit"}).format(d);el.textContent=days>=14?`⚠️ Last backup: ${when} · ${days} days ago — backup recommended`:`✓ Last backup: ${when}${days?` · ${days} day${days===1?"":"s"} ago`:" · today"}`;}
 function meta(avg){if(avg>=9)return["A+","Exceptional"];if(avg>=8)return["A","Outstanding"];if(avg>=7)return["B","Very Good"];if(avg>=6)return["B-","Good"];if(avg>=5)return["C","Satisfactory"];if(avg>=4)return["D","Needs Improvement"];return["F","Remedial Action Required"]}
 const verdicts={Topping:[[9.5,"A public service, frankly."],[9,"Would rearrange my schedule."],[8,"Ass-ignment understood."],[7,"Solid work. Would revisit."],[6,"Good enough to warrant a sequel."],[5,"The potential is there, babe."],[4,"Some further training required."],[3,"Enthusiasm may have exceeded ability."],[2,"An experience was certainly had."],[1,"Thank you for your participation."]],Bottoming:[[9.5,"A public service, frankly."],[9,"Would rearrange my schedule."],[8,"The equipment came with instructions."],[7,"Solid performance. Would revisit."],[6,"Good enough to warrant a sequel."],[5,"The potential is there, babe."],[4,"Some further training required."],[3,"Enthusiasm may have exceeded ability."],[2,"An experience was certainly had."],[1,"Please see me after class."]],Vers:[[9.5,"A public service, frankly."],[9,"Would rearrange my schedule."],[8,"Versatility demonstrated."],[7,"A well-rounded performance."],[6,"Good enough to warrant a sequel."],[5,"The potential is there, babe."],[4,"Some further training required."],[3,"Ambitious curriculum, mixed results."],[2,"An experience was certainly had."],[1,"Thank you for your participation."]],Side:[[9.5,"A public service, frankly."],[9,"Would rearrange my schedule."],[8,"No notes. Well, maybe one."],[7,"Solid performance. Would revisit."],[6,"Good enough to warrant a sequel."],[5,"The potential is there, babe."],[4,"Some further training required."],[3,"Enthusiasm may have exceeded ability."],[2,"An experience was certainly had."],[1,"Thank you for your participation."]]};
