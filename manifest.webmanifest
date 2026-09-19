@@ -1,0 +1,15 @@
+{
+  "name": "Report Card",
+  "short_name": "Report Card",
+  "description": "Private locally stored encounter dashboard, reviews and statistics.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d0912",
+  "theme_color": "#0d0912",
+  "orientation": "portrait-primary",
+  "icons": [
+    {"src":"icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
+    {"src":"icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+  ]
+}
