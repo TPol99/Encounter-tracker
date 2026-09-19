@@ -135,6 +135,10 @@ $("encounterChoice").onclick=e=>{if(e.target.dataset.v){encounterType=e.target.d
 $("notes").oninput=render;$("encounterDate").value=localISODate();$("starRating").onclick=e=>{if(e.target.dataset.star){starRating=+e.target.dataset.star;updateStars();render()}};
 function updateStars(){[...$("starRating").children].forEach(b=>b.classList.toggle("on",+b.dataset.star<=starRating));$("reportStars").textContent=starRating?"★".repeat(starRating)+"☆".repeat(5-starRating):"NO STAR RATING"}
 function loadHistory(){try{return JSON.parse(localStorage.getItem(STORE_KEY)||"[]")}catch{return []}}
+function loadReviewArchive(){try{const v=JSON.parse(localStorage.getItem(REVIEW_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return []}}
+function saveReviewArchive(v){localStorage.setItem(REVIEW_KEY,JSON.stringify(Array.isArray(v)?v:[]))}
+function archiveReview(type,key,data,html){const a=loadReviewArchive();const existing=a.findIndex(x=>x.type===type&&x.key===key);const item={id:existing>=0?a[existing].id:Date.now(),type,key,created:new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric",hour:"numeric",minute:"2-digit"}).format(new Date()),html};if(existing>=0)a[existing]=item;else a.unshift(item);saveReviewArchive(a);return item}
+function showStoredMonthPreview(){const key=monthKey(localISODate()),m=monthReviewObject(key);if($("monthPreview"))$("monthPreview").innerHTML=reviewTextMonthly(m);if($("weekPreview"))$("weekPreview").innerHTML=reviewTextWeekly(weeklyObject())}
 function persistHistory(v){localStorage.setItem(STORE_KEY,JSON.stringify(v));renderHistory();renderDashboard();renderReviewControls()}
 function snapshot(){const d=data();return{id:Date.now(),people:people.map(x=>({...x})),name:people[0]?.name||"",social:people[0]?.social||"",encounterType,date:$("encounterDate").value||localISODate(),position,stars:starRating,repeat,notes:$("notes").value.trim(),items:items.map(x=>({...x})),score:d.avg}}
 function prettyDate(iso){if(!iso)return "";return new Intl.DateTimeFormat("en-AU",{weekday:"long",day:"numeric",month:"long",year:"numeric"}).format(parseDate(iso))}
