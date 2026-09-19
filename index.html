@@ -162,13 +162,25 @@ function backupPayload(){return {version:5,exportedAt:new Date().toISOString(),e
 let currentBackupText="";
 function openBackupModal(mode="export"){
  const modal=$("backupModal"),box=$("backupText"),display=$("backupDisplay"),help=$("backupModalHelp");
- modal.classList.add("open");
  if(mode==="export"){
-  currentBackupText=JSON.stringify(backupPayload(),null,2);
-  display.textContent=currentBackupText;display.style.display="block";box.style.display="none";
-  help.textContent=`Complete backup ready: ${loadHistory().length} encounter${loadHistory().length===1?"":"s"}, ${loadReviewArchive().length} saved review${loadReviewArchive().length===1?"":"s"}, plus app settings. Copy this text and save it somewhere safe.`;
+  const payload=backupPayload();
+  currentBackupText=JSON.stringify(payload,null,2);
+  // Populate before opening the sheet. This avoids an iOS Safari/WebKit paint bug
+  // seen when a large <pre> is updated during the same frame that its modal appears.
+  display.textContent=currentBackupText;
+  display.style.display="block";
+  display.style.minHeight="240px";
+  display.style.color="#fff";
+  display.style.webkitTextFillColor="#fff";
+  box.style.display="none";
+  const encounterCount=payload.encounters.length, reviewCount=payload.reviews.length;
+  help.textContent=`Complete backup ready: ${encounterCount} encounter${encounterCount===1?"":"s"}, ${reviewCount} saved review${reviewCount===1?"":"s"}, plus all app settings. Copy this text and save it somewhere safe.`;
   $("copyBackupText").style.display="";$("shareBackupText").style.display="";$("restoreBackupText").style.display="none";
+  modal.classList.add("open");
+  // Force a repaint after the bottom sheet is visible on iOS.
+  requestAnimationFrame(()=>{display.textContent=currentBackupText;display.scrollTop=0});
  }else{
+  modal.classList.add("open");
   currentBackupText="";display.textContent="";display.style.display="none";box.style.display="block";box.value="";box.readOnly=false;box.placeholder="Paste your Report Card backup JSON here…";
   help.textContent="Paste backup text below, then tap Restore Pasted Backup. You can still import a .json file instead.";
   $("copyBackupText").style.display="none";$("shareBackupText").style.display="none";$("restoreBackupText").style.display="";setTimeout(()=>box.focus(),80);
@@ -180,7 +192,7 @@ $("homeExportBackup").onclick=()=>openBackupModal("export");
 $("homeImportBackup").onclick=()=>openBackupModal("import");
 $("closeBackupModal").onclick=closeBackupModal;
 $("backupModal").onclick=e=>{if(e.target===$("backupModal"))closeBackupModal()};
-$("copyBackupText").onclick=async()=>{const text=currentBackupText||$("backupDisplay").textContent;try{await navigator.clipboard.writeText(text)}catch{const box=$("backupText");box.focus();box.select();if(!document.execCommand("copy")){toast("Select the text and choose Copy");return}}localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());renderBackupStatus();toast("Backup copied — save it somewhere safe")};
+$("copyBackupText").onclick=async()=>{const text=currentBackupText||$("backupDisplay").textContent;if(!text){toast("Backup is empty — nothing copied");return}try{await navigator.clipboard.writeText(text)}catch{const ta=document.createElement("textarea");ta.value=text;ta.setAttribute("readonly","");ta.style.cssText="position:fixed;left:-9999px;top:0;opacity:0";document.body.appendChild(ta);ta.focus();ta.select();ta.setSelectionRange(0,ta.value.length);const ok=document.execCommand("copy");ta.remove();if(!ok){toast("Press and hold the backup text, then choose Copy");return}}localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());renderBackupStatus();toast("Backup copied — save it somewhere safe")};
 $("shareBackupText").onclick=async()=>{const text=currentBackupText||$("backupDisplay").textContent;if(!navigator.share){toast("Sharing unavailable — use Copy Backup");return}try{await navigator.share({title:"Report Card Backup",text});localStorage.setItem(LAST_BACKUP_KEY,new Date().toISOString());renderBackupStatus()}catch(e){if(e?.name!=="AbortError")toast("Sharing unavailable — use Copy Backup")}};
 $("restoreBackupText").onclick=()=>{try{const v=JSON.parse($("backupText").value.trim());toast(applyBackup(v));closeBackupModal();renderHome();renderReviews()}catch{toast("That backup text isn't valid")}};
 $("importFile").onchange=async e=>{try{const v=JSON.parse(await e.target.files[0].text());toast(applyBackup(v))}catch{toast("Invalid backup file")}e.target.value=""};
